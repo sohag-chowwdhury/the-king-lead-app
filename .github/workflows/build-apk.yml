@@ -25,7 +25,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
+        with:name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
         with:
+          channel: stable
+          cache: true
+      - name: Generate Android project
+        run: flutter create --platforms=android --org com --project-name the_king_lead_app .
+      - name: Set package name
+        run: |
+          sed -i 's/applicationId = "com.the_king_lead_app"/applicationId = "com.theking"/' android/app/build.gradle.kts
+          sed -i 's/namespace = "com.the_king_lead_app"/namespace = "com.theking"/' android/app/build.gradle.kts
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: the-king-lead-app
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
           channel: stable
           cache: true
       - name: Generate Android project

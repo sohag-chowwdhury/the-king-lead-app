@@ -33,6 +33,105 @@ class KingApp extends StatelessWidget {
   );
 }
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: const FirebaseOptions(
+    apiKey: 'AIzaSyBhAD9p4TbXZUHd-6_cd75kCQh4yZNfUyw',
+    appId: '1:901945590076:android:3694d5babea31c05761e39',
+    messagingSenderId: '901945590076',
+    projectId: 'the-king-ebce5',
+    storageBucket: 'the-king-ebce5.firebasestorage.app',
+  ));
+  FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+  runApp(const KingApp());
+}
+
+class KingApp extends StatelessWidget {
+  const KingApp({super.key});
+  @override Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    title: 'The King Lead Follow-up',
+    theme: ThemeData.dark(useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: const Color(0xff05070b),
+      colorScheme: const ColorScheme.dark(primary: Color(0xff33b8ff), secondary: Color(0xff55e1ff), surface: Color(0xff0d121b)),
+      inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: const Color(0xff0a0f17), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14))),
+      cardTheme: CardThemeData(color: const Color(0xff0d121b), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+    ),
+    home: StreamBuilder<User?>(stream: FirebaseAuth.instance.authStateChanges(), builder: (_, s) => s.data == null ? const LoginPage() : const Shell()),
+  );
+}
+
+class LoginPage extends StatefulWidget { const LoginPage({super.key}); @override State<LoginPage> createState()=>_LoginPageState(); }
+class _LoginPageState extends State<LoginPage> {
+  static const _adminEmail='admin@king.com';
+  static const _adminPassword='King@20002';
+  static const _appPin='20002';
+  final pin=TextEditingController();
+  bool busy=false,hidePin=true;
+
+  Future<void> submit() async {
+    FocusScope.of(context).unfocus();
+    if(pin.text.trim()!=_appPin){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('PIN সঠিক নয়')));
+      return;
+    }
+    setState(()=>busy=true);
+    try {
+      try {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(email:_adminEmail,password:_adminPassword);
+      } on FirebaseAuthException catch(e) {
+        if(e.code=='user-not-found'||e.code=='invalid-credential'){
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(email:_adminEmail,password:_adminPassword);
+        } else {
+          rethrow;
+        }
+      }
+    } on FirebaseAuthException catch(e){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.code=='email-already-in-use'?'Admin account-এর password মিলছে না':'Login failed: ${e.message??e.code}')));
+    } finally{
+      if(mounted)setState(()=>busy=false);
+    }
+  }
+
+  @override void dispose(){pin.dispose();super.dispose();}
+  @override Widget build(BuildContext c)=>Scaffold(body:SafeArea(child:Center(child:SingleChildScrollView(padding:const EdgeInsets.all(24),child:Column(children:[
+    Container(width:72,height:72,decoration:BoxDecoration(borderRadius:BorderRadius.circular(22),gradient:const LinearGradient(colors:[Color(0xff0f5385),Color(0xff21c9ff)])),child:const Center(child:Text('K',style:TextStyle(fontSize:38,fontWeight:FontWeight.w900)))),
+    const SizedBox(height:20),const Text('The King International Services',textAlign:TextAlign.center,style:TextStyle(fontSize:22,fontWeight:FontWeight.bold)),const SizedBox(height:8),const Text('আপনার PIN দিয়ে প্রবেশ করুন',style:TextStyle(color:Colors.white54)),const SizedBox(height:28),
+    TextField(controller:pin,autofocus:true,keyboardType:TextInputType.number,obscureText:hidePin,maxLength:5,inputFormatters:[FilteringTextInputFormatter.digitsOnly],onSubmitted:(_)=>busy?null:submit(),decoration:InputDecoration(labelText:'PIN',counterText:'',prefixIcon:const Icon(Icons.lock_outline),suffixIcon:IconButton(onPressed:()=>setState(()=>hidePin=!hidePin),icon:Icon(hidePin?Icons.visibility:Icons.visibility_off)))),const SizedBox(height:18),
+    SizedBox(width:double.infinity,child:FilledButton(onPressed:busy?null:submit,child:Padding(padding:const EdgeInsets.all(13),child:Text(busy?'Please wait...':'প্রবেশ করুন'))))
+  ])))));
+}
+
+class Lead {
+  final String id,name,mobile,district,saudi,passport,status,comment; final DateTime followup,created;
+  Lead({required this.id,required this.name,required this.mobile,required this.district,required this.saudi,required this.passport,required this.status,required this.comment,required this.followup,required this.created});
+  factory Lead.fromDoc(DocumentSnapshot<Map<String,dynamic>> d){final x=d.data()!;return Lead(id:d.id,name:x['name']??'',mobile:x['mobile']??'',district:x['district']??'',saudi:x['saudi']??'নতুন',passport:x['passport']??'নেই',status:x['status']??'New',comment:x['comment']??'',followup:(x['followup'] as Timestamp?)?.toDate()??DateTime.now(),created:(x['createdAt'] as Timestamp?)?.toDate()??DateTime.now());}
+}
+
+CollectionReference<Map<String,dynamic>> get leadsRef => FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).collection('leads');
+
+class Shell extends StatefulWidget {const Shell({super.key});@override State<Shell> createState()=>_ShellState();}
+class _ShellState extends State<Shell>{int tab=0;@override Widget build(BuildContext c){final pages=[const Dashboard(),const LeadList(mode:'all'),const LeadList(mode:'today'),const LeadList(mode:'follow'),const LeadForm()];return Scaffold(appBar:AppBar(title:const Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Lead Follow-up',style:TextStyle(fontSize:18)),Text('The King International Services',style:TextStyle(fontSize:10,color:Colors.white54))]),actions:[IconButton(onPressed:()=>FirebaseAuth.instance.signOut(),icon:const Icon(Icons.logout))]),body:IndexedStack(index:tab,children:pages),bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(x)=>setState(()=>tab=x),destinations:const [NavigationDestination(icon:Icon(Icons.dashboard),label:'Dashboard'),NavigationDestination(icon:Icon(Icons.people),label:'Leads'),NavigationDestination(icon:Icon(Icons.today),label:'Today Input'),NavigationDestination(icon:Icon(Icons.schedule),label:'Follow-up'),NavigationDestination(icon:Icon(Icons.add),label:'Add')])) ;}}
+
+class Dashboard extends StatelessWidget {const Dashboard({super.key});@override Widget build(BuildContext c)=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:leadsRef.orderBy('createdAt',descending:true).snapshots(),builder:(c,s){if(s.hasError)return Center(child:Text('Database error: ${s.error}'));if(!s.hasData)return const Center(child:CircularProgressIndicator());final ls=s.data!.docs.map(Lead.fromDoc).toList(),now=DateTime.now();bool same(DateTime d)=>d.year==now.year&&d.month==now.month&&d.day==now.day;final today=ls.where((x)=>same(x.created)).length,follow=ls.where((x)=>same(x.followup)).length,over=ls.where((x)=>x.followup.isBefore(now)&&x.status!='Successful'&&x.status!='Closed').length,qual=ls.where((x)=>x.status=='Qualified').length;return ListView(padding:const EdgeInsets.all(16),children:[Container(padding:const EdgeInsets.all(20),decoration:BoxDecoration(borderRadius:BorderRadius.circular(22),gradient:const LinearGradient(colors:[Color(0xff102846),Color(0xff0a0e15)])),child:const Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('আজকের কাজ',style:TextStyle(color:Colors.white60)),SizedBox(height:8),Text('Lead Dashboard',style:TextStyle(fontSize:28,fontWeight:FontWeight.bold)),Text('সব তথ্য realtime update হচ্ছে',style:TextStyle(color:Colors.white54))])),const SizedBox(height:12),GridView.count(crossAxisCount:2,shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),childAspectRatio:1.35,children:[Stat('আজকের ফলোআপ',follow,Icons.schedule),Stat('আজকের ইনপুট',today,Icons.add_circle),Stat('Overdue',over,Icons.warning_amber),Stat('Qualified',qual,Icons.verified)]),const SizedBox(height:14),const Text('সাম্প্রতিক লিড',style:TextStyle(fontSize:17,fontWeight:FontWeight.bold)),...ls.take(3).map((x)=>LeadCard(x))]);});}
+class Stat extends StatelessWidget{final String t;final int n;final IconData i;const Stat(this.t,this.n,this.i,{super.key});@override Widget build(BuildContext c)=>Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(i,color:const Color(0xff55e1ff)),const Spacer(),Text('$n',style:const TextStyle(fontSize:25,fontWeight:FontWeight.bold)),Text(t,style:const TextStyle(fontSize:11,color:Colors.white60))])));}
+
+class LeadList extends StatelessWidget{final String mode;const LeadList({required this.mode,super.key});@override Widget build(BuildContext c)=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:leadsRef.orderBy('createdAt',descending:true).snapshots(),builder:(c,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());var ls=s.data!.docs.map(Lead.fromDoc).toList();final n=DateTime.now();bool same(DateTime d)=>d.year==n.year&&d.month==n.month&&d.day==n.day;if(mode=='today')ls=ls.where((x)=>same(x.created)).toList();if(mode=='follow')ls=ls.where((x)=>same(x.followup)).toList();return ls.isEmpty?const Center(child:Text('কোনো লিড পাওয়া যায়নি')):ListView(padding:const EdgeInsets.all(12),children:ls.map((x)=>LeadCard(x)).toList());});}
+
+class LeadCard extends StatelessWidget{final Lead l;const LeadCard(this.l,{super.key});Future<void> open(String u)async{await launchUrl(Uri.parse(u),mode:LaunchMode.externalApplication);} @override Widget build(BuildContext c)=>Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(l.name.isEmpty?'নাম দেওয়া হয়নি':l.name,style:const TextStyle(fontWeight:FontWeight.bold,fontSize:16)),Text(l.mobile,style:const TextStyle(color:Colors.white60))])),Chip(label:Text(l.status))]),const Divider(),Text('${l.district} • ${l.saudi} • পাসপোর্ট ${l.passport}'),Text('ফলোআপ: ${l.followup.day}/${l.followup.month}/${l.followup.year} ${TimeOfDay.fromDateTime(l.followup).format(c)}'),if(l.comment.isNotEmpty)Text(l.comment,style:const TextStyle(color:Colors.white60)),const SizedBox(height:10),Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[IconButton(onPressed:()=>open('tel:${l.mobile}'),icon:const Icon(Icons.call,color:Color(0xff55e1ff))),IconButton(onPressed:()=>open('https://wa.me/88${l.mobile.replaceAll(RegExp(r'\D'),'')}'),icon:const Icon(Icons.chat,color:Colors.green)),IconButton(onPressed:()async{await Clipboard.setData(ClipboardData(text:l.mobile));if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('IMO-এর জন্য নম্বর Copy হয়েছে')));},icon:const Icon(Icons.copy)),IconButton(onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>LeadForm(lead:l))),icon:const Icon(Icons.edit))])])));}
+
+class LeadForm extends StatefulWidget{final Lead? lead;const LeadForm({this.lead,super.key});@override State<LeadForm> createState()=>_LeadFormState();}
+class _LeadFormState extends State<LeadForm>{late final name=TextEditingController(text:widget.lead?.name),mobile=TextEditingController(text:widget.lead?.mobile),comment=TextEditingController(text:widget.lead?.comment);late String district=widget.lead?.district??'ঢাকা',saudi=widget.lead?.saudi??'নতুন',passport=widget.lead?.passport??'আছে',status=widget.lead?.status??'New';late DateTime follow=widget.lead?.followup??DateTime.now().add(const Duration(days:1));final key=GlobalKey<FormState>();
+Future<void> save()async{if(!key.currentState!.validate())return;final data={'name':name.text.trim(),'mobile':mobile.text.trim(),'district':district,'saudi':saudi,'passport':passport,'status':status,'comment':comment.text.trim(),'followup':Timestamp.fromDate(follow),'updatedAt':FieldValue.serverTimestamp()};if(widget.lead==null){data['createdAt']=FieldValue.serverTimestamp();await leadsRef.add(data);}else{await leadsRef.doc(widget.lead!.id).update(data);}if(mounted){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('লিড সংরক্ষণ হয়েছে')));if(widget.lead!=null)Navigator.pop(context);else{key.currentState!.reset();name.clear();mobile.clear();comment.clear();}}}
+@override Widget build(BuildContext c)=>Scaffold(backgroundColor:Colors.transparent,appBar:widget.lead==null?null:AppBar(title:const Text('লিড আপডেট')),body:Form(key:key,child:ListView(padding:const EdgeInsets.all(16),children:[Text(widget.lead==null?'নতুন লিড যোগ করুন':'লিড আপডেট করুন',style:const TextStyle(fontSize:21,fontWeight:FontWeight.bold)),const SizedBox(height:16),TextFormField(controller:name,decoration:const InputDecoration(labelText:'প্রার্থীর নাম (ঐচ্ছিক)')),const SizedBox(height:12),TextFormField(controller:mobile,keyboardType:TextInputType.phone,decoration:const InputDecoration(labelText:'মোবাইল নম্বর *'),validator:(v)=>v==null||v.trim().isEmpty?'মোবাইল নম্বর অবশ্যই দিতে হবে':null),const SizedBox(height:12),drop('জেলা',district,['ঢাকা','চট্টগ্রাম','কুমিল্লা','সিলেট','নোয়াখালী','বরিশাল'],(v)=>setState(()=>district=v!)),drop('সৌদি অভিজ্ঞতা',saudi,['নতুন','পুরাতন'],(v)=>setState(()=>saudi=v!)),drop('পাসপোর্ট',passport,['আছে','নেই','আবেদন করা হয়েছে'],(v)=>setState(()=>passport=v!)),drop('স্ট্যাটাস',status,['New','Interested','No Answer','Qualified','Passport Pending','Successful','Closed'],(v)=>setState(()=>status=v!)),ListTile(contentPadding:EdgeInsets.zero,title:const Text('পরবর্তী ফলোআপ'),subtitle:Text('${follow.day}/${follow.month}/${follow.year} • ${TimeOfDay.fromDateTime(follow).format(c)}'),trailing:const Icon(Icons.calendar_month),onTap:()async{final d=await showDatePicker(context:c,firstDate:DateTime.now().subtract(const Duration(days:365)),lastDate:DateTime.now().add(const Duration(days:730)),initialDate:follow);if(d==null)return;final t=await showTimePicker(context:c,initialTime:TimeOfDay.fromDateTime(follow));if(t!=null)setState(()=>follow=DateTime(d.year,d.month,d.day,t.hour,t.minute));}),TextFormField(controller:comment,maxLines:3,decoration:const InputDecoration(labelText:'মন্তব্য')),const SizedBox(height:18),FilledButton(onPressed:save,child:const Padding(padding:EdgeInsets.all(14),child:Text('লিড সংরক্ষণ করুন')))])));
+Widget drop(String l,String v,List<String> xs,ValueChanged<String?> f)=>Padding(padding:const EdgeInsets.only(bottom:12),child:DropdownButtonFormField<String>(initialValue:v,decoration:InputDecoration(labelText:l),items:xs.map((x)=>DropdownMenuItem(value:x,child:Text(x))).toList(),onChanged:f));}
 class LoginPage extends StatefulWidget { const LoginPage({super.key}); @override State<LoginPage> createState()=>_LoginPageState(); }
 class _LoginPageState extends State<LoginPage> {
   final email=TextEditingController(), pass=TextEditingController(); bool signup=false, busy=false;

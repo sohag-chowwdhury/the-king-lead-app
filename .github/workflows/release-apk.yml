@@ -1,0 +1,28 @@
+name: APK Release Build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Android project
+        run: flutter create --platforms=android --org com --project-name the_king_lead_app .
+      - name: Configure app
+        run: |
+          sed -i 's/applicationId = "com.the_king_lead_app"/applicationId = "com.theking"/' android/app/build.gradle.kts
+          sed -i 's/namespace = "com.the_king_lead_app"/namespace = "com.theking"/' android/app/build.gradle.kts
+          rm -f test/widget_test.dart
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: the-king-lead-app
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30

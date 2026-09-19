@@ -18,6 +18,7 @@ jobs:
         run: |
           sed -i 's/applicationId = "com.the_king_lead_app"/applicationId = "com.theking"/' android/app/build.gradle.kts
           sed -i 's/namespace = "com.the_king_lead_app"/namespace = "com.theking"/' android/app/build.gradle.kts
+          sed -i 's/package com.the_king_lead_app/package com.theking/' android/app/src/main/kotlin/com/the_king_lead_app/MainActivity.kt
           rm -f test/widget_test.dart
       - run: flutter pub get
       - run: flutter build apk --release

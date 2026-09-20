@@ -273,6 +273,8 @@ class Lead {
   final String comment;
   final String source;
   final String interest;
+  final String broker;
+  final bool followUpComplete;
   final String assignedId;
   final String assignedName;
   final String creatorId;
@@ -290,6 +292,8 @@ class Lead {
     required this.comment,
     required this.source,
     required this.interest,
+    required this.broker,
+    required this.followUpComplete,
     required this.assignedId,
     required this.assignedName,
     required this.creatorId,
@@ -310,6 +314,8 @@ class Lead {
       comment: data['comment'] ?? '',
       source: data['source'] ?? '',
       interest: data['interest'] ?? '',
+      broker: data['broker'] ?? '',
+      followUpComplete: data['followUpComplete'] ?? false,
       assignedId: data['assignedToId'] ?? '',
       assignedName: data['assignedToName'] ?? 'Unassigned',
       creatorId: data['createdById'] ?? '',
@@ -476,7 +482,7 @@ class DashboardPage extends StatelessWidget {
                       leads
                           .where((lead) =>
                               lead.followUp.isBefore(now) &&
-                              !['Successful', 'Closed'].contains(lead.status))
+                              !lead.followUpComplete)
                           .length,
                       const Color(0xfff97316)),
                   StatCard('Qualified', counts['Qualified']!,
@@ -607,22 +613,33 @@ class _LeadListPageState extends State<LeadListPage> {
   String source = 'সব';
   String interest = 'সব';
   String district = 'সব';
+  String broker = 'সব';
   bool newestFirst = true;
 
   bool get hasFilter =>
-      status != 'সব' || source != 'সব' || interest != 'সব' || district != 'সব';
-
-  List<String> values(List<Lead> leads, String Function(Lead) pick) {
-    final result = leads.map(pick).where((value) => value.isNotEmpty).toSet().toList()
-      ..sort();
-    return ['সব', ...result];
-  }
+      status != 'সব' || source != 'সব' || interest != 'সব' ||
+      district != 'সব' || broker != 'সব';
 
   Future<void> showFilters(List<Lead> leads) async {
+    final configuredSources = await activeOptionNames(
+        'lead_sources', ['TikTok', 'Facebook', 'Direct', 'অন্যান্য']);
+    final configuredTopics = await activeOptionNames(
+        'interest_topics', ['সৌদি শ্রমিক ভিসা', 'টিকিট', 'ভিসা প্রসেসিং']);
+    final configuredBrokers = await activeOptionNames('brokers', []);
+    if (!mounted) return;
+    List<String> allOptions(
+        List<String> configured, String Function(Lead) pick) {
+      final options = {...configured, ...leads.map(pick)}
+          .where((value) => value.isNotEmpty)
+          .toList()
+        ..sort();
+      return ['সব', ...options];
+    }
     var nextStatus = status;
     var nextSource = source;
     var nextInterest = interest;
     var nextDistrict = district;
+    var nextBroker = broker;
     var nextNewest = newestFirst;
     await showModalBottomSheet<void>(
       context: context,
@@ -663,17 +680,20 @@ class _LeadListPageState extends State<LeadListPage> {
                     ),
                     const SizedBox(height: 16),
                     filterDrop('Status', nextStatus,
-                        values(leads, (lead) => lead.status),
+                        ['সব', ...leadStatuses],
                         (value) => setSheetState(() => nextStatus = value!)),
                     filterDrop('Lead Source', nextSource,
-                        values(leads, (lead) => lead.source),
+                        allOptions(configuredSources, (lead) => lead.source),
                         (value) => setSheetState(() => nextSource = value!)),
                     filterDrop('আগ্রহের বিষয়', nextInterest,
-                        values(leads, (lead) => lead.interest),
+                        allOptions(configuredTopics, (lead) => lead.interest),
                         (value) => setSheetState(() => nextInterest = value!)),
                     filterDrop('জেলা', nextDistrict,
-                        values(leads, (lead) => lead.district),
+                        ['সব', ...districts],
                         (value) => setSheetState(() => nextDistrict = value!)),
+                    filterDrop('Broker', nextBroker,
+                        allOptions(configuredBrokers, (lead) => lead.broker),
+                        (value) => setSheetState(() => nextBroker = value!)),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('নতুন Lead সবার উপরে'),
@@ -688,7 +708,7 @@ class _LeadListPageState extends State<LeadListPage> {
                           child: OutlinedButton(
                             onPressed: () {
                               setState(() {
-                                status = source = interest = district = 'সব';
+                                status = source = interest = district = broker = 'সব';
                                 newestFirst = true;
                                 page = 0;
                               });
@@ -706,6 +726,7 @@ class _LeadListPageState extends State<LeadListPage> {
                                 source = nextSource;
                                 interest = nextInterest;
                                 district = nextDistrict;
+                                broker = nextBroker;
                                 newestFirst = nextNewest;
                                 page = 0;
                               });
@@ -741,7 +762,10 @@ class _LeadListPageState extends State<LeadListPage> {
             items = items.where((lead) => sameDay(lead.createdAt, now)).toList();
           }
           if (widget.mode == 'follow') {
-            items = items.where((lead) => sameDay(lead.followUp, now)).toList();
+            items = items
+                .where((lead) =>
+                    !lead.followUpComplete && sameDay(lead.followUp, now))
+                .toList();
           }
           if (status != 'সব') items = items.where((lead) => lead.status == status).toList();
           if (source != 'সব') items = items.where((lead) => lead.source == source).toList();
@@ -750,6 +774,9 @@ class _LeadListPageState extends State<LeadListPage> {
           }
           if (district != 'সব') {
             items = items.where((lead) => lead.district == district).toList();
+          }
+          if (broker != 'সব') {
+            items = items.where((lead) => lead.broker == broker).toList();
           }
           items.sort((a, b) => newestFirst
               ? b.createdAt.compareTo(a.createdAt)
@@ -870,6 +897,14 @@ class LeadCard extends StatelessWidget {
     if (confirmed) await collection('leads').doc(lead.id).delete();
   }
 
+  Future<void> completeFollowUp(BuildContext context) async {
+    await collection('leads').doc(lead.id).update({
+      'followUpComplete': true,
+      'followUpCompletedAt': FieldValue.serverTimestamp(),
+    });
+    if (context.mounted) toast(context, 'Follow-up Complete হয়েছে');
+  }
+
   @override
   Widget build(BuildContext context) => Card(
         child: Padding(
@@ -890,6 +925,26 @@ class LeadCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (!lead.followUpComplete)
+                    IconButton(
+                      tooltip: lead.followUp.isBefore(DateTime.now())
+                          ? 'Follow-up Overdue'
+                          : 'Follow-up বাকি',
+                      onPressed: () => completeFollowUp(context),
+                      icon: Icon(
+                        lead.followUp.isBefore(DateTime.now())
+                            ? Icons.notification_important
+                            : Icons.notifications_active,
+                        color: lead.followUp.isBefore(DateTime.now())
+                            ? Colors.red
+                            : Colors.amber,
+                      ),
+                    )
+                  else
+                    const Tooltip(
+                      message: 'Follow-up Complete',
+                      child: Icon(Icons.notifications_off, color: Colors.green),
+                    ),
                   Chip(label: Text(lead.status)),
                 ],
               ),
@@ -900,6 +955,7 @@ class LeadCard extends StatelessWidget {
               Text('${lead.district} • ${lead.saudi} • পাসপোর্ট ${lead.passport}'),
               if (lead.source.isNotEmpty) Text('Source: ${lead.source}'),
               if (lead.interest.isNotEmpty) Text('আগ্রহ: ${lead.interest}'),
+              if (lead.broker.isNotEmpty) Text('Broker: ${lead.broker}'),
               Text(
                   'ফলোআপ: ${lead.followUp.day}/${lead.followUp.month}/${lead.followUp.year}  ${TimeOfDay.fromDateTime(lead.followUp).format(context)}'),
               if (lead.comment.isNotEmpty) Text(lead.comment),
@@ -953,6 +1009,22 @@ const districts = [
   'শরীয়তপুর', 'শেরপুর', 'সিরাজগঞ্জ', 'সুনামগঞ্জ', 'সিলেট', 'টাঙ্গাইল', 'ঠাকুরগাঁও'
 ];
 
+const leadStatuses = [
+  'New',
+  'Follow-up',
+  'Contacted',
+  'Qualified',
+  'Successful',
+  'Closed',
+  'Office Visit',
+  'Passport Collected',
+  'Eligible Check',
+  'Medical',
+  'Police Clearance',
+  'Waiting for Flight',
+  'Done',
+];
+
 class LeadFormPage extends StatefulWidget {
   final AppUser user;
   final Lead? lead;
@@ -976,11 +1048,14 @@ class _LeadFormPageState extends State<LeadFormPage> {
   late String assignedName = widget.lead?.assignedName ?? widget.user.name;
   late String source = widget.lead?.source ?? '';
   late String interest = widget.lead?.interest ?? '';
+  late final brokerController = TextEditingController(text: widget.lead?.broker);
+  late String broker = widget.lead?.broker ?? '';
   late DateTime followUp =
       widget.lead?.followUp ?? DateTime.now().add(const Duration(days: 1));
   List<AppUser> staff = [];
   List<String> sources = [];
   List<String> topics = [];
+  List<String> brokers = [];
   bool loading = true;
   bool saving = false;
 
@@ -993,9 +1068,15 @@ class _LeadFormPageState extends State<LeadFormPage> {
   Future<void> loadOptions() async {
     final staffSnap = await collection('staff').where('active', isEqualTo: true).get();
     staff = [...superAdmins, ...staffSnap.docs.map(AppUser.fromDoc)];
-    sources = await activeOptionNames('lead_sources', ['TikTok', 'Facebook']);
+    sources = await activeOptionNames(
+        'lead_sources', ['TikTok', 'Facebook', 'Direct', 'অন্যান্য']);
     topics = await activeOptionNames(
         'interest_topics', ['সৌদি শ্রমিক ভিসা', 'টিকিট', 'ভিসা প্রসেসিং']);
+    brokers = await activeOptionNames('brokers', []);
+    if (source == 'অন্যান্য' && broker.isEmpty && brokers.isNotEmpty) {
+      broker = brokers.first;
+      brokerController.text = broker;
+    }
     if (source.isEmpty && sources.isNotEmpty) source = sources.first;
     if (interest.isEmpty && topics.isNotEmpty) interest = topics.first;
     if (!staff.any((item) => item.id == assignedId)) {
@@ -1036,6 +1117,12 @@ class _LeadFormPageState extends State<LeadFormPage> {
         'comment': comment.text.trim(),
         'source': source,
         'interest': interest,
+        'broker': source == 'অন্যান্য'
+            ? (brokerController.text.trim().isNotEmpty
+                ? brokerController.text.trim()
+                : broker)
+            : '',
+        'followUpComplete': widget.lead?.followUpComplete ?? false,
         'assignedToId': assignedId,
         'assignedToName': assignedName,
         'followup': Timestamp.fromDate(followUp),
@@ -1106,6 +1193,22 @@ class _LeadFormPageState extends State<LeadFormPage> {
                 (value) => setState(() => district = value!)),
             dropdown('Lead Source', source, sources,
                 (value) => setState(() => source = value!)),
+            if (source == 'অন্যান্য') ...[
+              if (brokers.isNotEmpty)
+                dropdown('Broker List',
+                    brokers.contains(broker) ? broker : brokers.first, brokers,
+                    (value) => setState(() {
+                          broker = value!;
+                          brokerController.text = value;
+                        })),
+              TextFormField(
+                controller: brokerController,
+                decoration: const InputDecoration(
+                    labelText: 'Broker নাম',
+                    prefixIcon: Icon(Icons.handshake)),
+              ),
+              const SizedBox(height: 12),
+            ],
             dropdown('আগ্রহের বিষয়', interest, topics,
                 (value) => setState(() => interest = value!)),
             dropdown('সৌদি অবস্থা', saudi, ['নতুন', 'ফেরত', 'বর্তমানে সৌদি'],
@@ -1115,7 +1218,7 @@ class _LeadFormPageState extends State<LeadFormPage> {
             dropdown(
                 'Status',
                 status,
-                ['New', 'Follow-up', 'Qualified', 'Successful', 'Closed'],
+                leadStatuses,
                 (value) => setState(() => status = value!)),
             if (widget.user.isAdmin)
               Padding(
@@ -1169,9 +1272,12 @@ class _LeadFormPageState extends State<LeadFormPage> {
 Future<List<String>> activeOptionNames(
     String collectionName, List<String> defaults) async {
   final ref = collection(collectionName);
-  final snapshot = await ref.get();
-  if (snapshot.docs.isEmpty) {
-    for (var i = 0; i < defaults.length; i++) {
+  var snapshot = await ref.get();
+  final existing = snapshot.docs
+      .map((doc) => '${doc.data()['name']}'.trim().toLowerCase())
+      .toSet();
+  for (var i = 0; i < defaults.length; i++) {
+    if (!existing.contains(defaults[i].toLowerCase())) {
       await ref.add({
         'name': defaults[i],
         'active': true,
@@ -1179,8 +1285,8 @@ Future<List<String>> activeOptionNames(
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
-    return defaults;
   }
+  if (defaults.isNotEmpty) snapshot = await ref.get();
   final docs = snapshot.docs.where((doc) => doc.data()['active'] ?? true).toList()
     ..sort((a, b) =>
         (a.data()['order'] ?? 999).compareTo(b.data()['order'] ?? 999));
@@ -1192,7 +1298,7 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-        length: 3,
+        length: 4,
         child: Column(
           children: const [
             TabBar(
@@ -1200,6 +1306,7 @@ class SettingsPage extends StatelessWidget {
               tabs: [
                 Tab(icon: Icon(Icons.campaign), text: 'Lead Source'),
                 Tab(icon: Icon(Icons.topic), text: 'আগ্রহের বিষয়'),
+                Tab(icon: Icon(Icons.handshake), text: 'Broker List'),
                 Tab(icon: Icon(Icons.manage_accounts), text: 'User Settings'),
               ],
             ),
@@ -1214,6 +1321,10 @@ class SettingsPage extends StatelessWidget {
                       collectionName: 'interest_topics',
                       title: 'আগ্রহের বিষয়',
                       defaults: ['সৌদি শ্রমিক ভিসা', 'টিকিট', 'ভিসা প্রসেসিং']),
+                  OptionSettings(
+                      collectionName: 'brokers',
+                      title: 'Broker',
+                      defaults: []),
                   UserSettings(),
                 ],
               ),

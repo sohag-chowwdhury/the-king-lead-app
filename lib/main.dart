@@ -223,7 +223,7 @@ class _LoginPageState extends State<LoginPage> {
                     const CircularProgressIndicator()
                   else ...[
                     DropdownButtonFormField<String>(
-                      value: selectedId,
+                      initialValue: selectedId,
                       decoration: const InputDecoration(labelText: 'User'),
                       items: users
                           .where((user) => user.active)
@@ -634,7 +634,7 @@ class _LeadListPageState extends State<LeadListPage> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: DropdownButtonFormField<String>(
-                  value: items.contains(value) ? value : 'সব',
+                  initialValue: items.contains(value) ? value : 'সব',
                   isExpanded: true,
                   decoration: InputDecoration(labelText: label),
                   items: items
@@ -757,7 +757,7 @@ class _LeadListPageState extends State<LeadListPage> {
           final totalPages = items.isEmpty ? 1 : (items.length / pageSize).ceil();
           if (page >= totalPages) page = totalPages - 1;
           final start = page * pageSize;
-          final end = (start + pageSize).clamp(0, items.length) as int;
+          final end = (start + pageSize).clamp(0, items.length);
           final visible = items.sublist(start, end);
           final title = widget.mode == 'today'
               ? 'আজকের Lead'
@@ -1066,7 +1066,7 @@ class _LeadFormPageState extends State<LeadFormPage> {
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: DropdownButtonFormField<String>(
-          value: items.contains(value) ? value : null,
+          initialValue: items.contains(value) ? value : null,
           isExpanded: true,
           decoration: InputDecoration(labelText: label),
           items: items
@@ -1121,7 +1121,7 @@ class _LeadFormPageState extends State<LeadFormPage> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: DropdownButtonFormField<String>(
-                  value: assignedId,
+                  initialValue: assignedId,
                   decoration: const InputDecoration(labelText: 'Assign User'),
                   items: staff
                       .map((person) => DropdownMenuItem(

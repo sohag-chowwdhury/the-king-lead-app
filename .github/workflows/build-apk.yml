@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,70 +13,23 @@ jobs:
         with:
           channel: stable
           cache: true
+
       - name: Generate Android project
         run: flutter create --platforms=android --org com --project-name the_king_lead_app .
-name: Build Android APK
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:name: Build Android APK
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - name: Generate Android project
-        run: flutter create --platforms=android --org com --project-name the_king_lead_app .
-      - name: Set package name
+
+      - name: Set Android package and launcher activity
         run: |
           sed -i 's/applicationId = "com.the_king_lead_app"/applicationId = "com.theking"/' android/app/build.gradle.kts
           sed -i 's/namespace = "com.the_king_lead_app"/namespace = "com.theking"/' android/app/build.gradle.kts
+          mkdir -p android/app/src/main/kotlin/com/theking
+          sed 's/package com.the_king_lead_app/package com.theking/' android/app/src/main/kotlin/com/the_king_lead_app/MainActivity.kt > android/app/src/main/kotlin/com/theking/MainActivity.kt
+          rm -f android/app/src/main/kotlin/com/the_king_lead_app/MainActivity.kt
+          sed -i 's/android:label="the_king_lead_app"/android:label="The King Lead"/' android/app/src/main/AndroidManifest.xml
+
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter build apk --release
-      - uses: actions/upload-artifact@v4
-        with:
-          name: the-king-lead-app
-          path: build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 30
-          channel: stable
-          cache: true
-      - name: Generate Android project
-        run: flutter create --platforms=android --org com --project-name the_king_lead_app .
-      - name: Set package name
-        run: |
-          sed -i 's/applicationId = "com.the_king_lead_app"/applicationId = "com.theking"/' android/app/build.gradle.kts
-          sed -i 's/namespace = "com.the_king_lead_app"/namespace = "com.theking"/' android/app/build.gradle.kts
-      - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter build apk --release
-      - uses: actions/upload-artifact@v4
-        with:
-          name: the-king-lead-app
-          path: build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 30
-      - name: Set package name
-        run: |
-          sed -i 's/applicationId = "com.the_king_lead_app"/applicationId = "com.theking"/' android/app/build.gradle.kts
-          sed -i 's/namespace = "com.the_king_lead_app"/namespace = "com.theking"/' android/app/build.gradle.kts
-      - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter build apk --release
+
       - uses: actions/upload-artifact@v4
         with:
           name: the-king-lead-app

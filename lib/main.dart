@@ -25,7 +25,7 @@ Future<void> main() async {
   );
   FirebaseFirestore.instance.settings =
       const Settings(persistenceEnabled: true);
-  runApp(const KingLeadApp());
+  runApp(const MyApp());
 }
 
 CollectionReference<Map<String, dynamic>> collection(String name) =>
@@ -111,8 +111,8 @@ void toast(BuildContext context, String text) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 }
 
-class KingLeadApp extends StatelessWidget {
-  const KingLeadApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -591,33 +591,240 @@ class StatusGraph extends StatelessWidget {
   }
 }
 
-class LeadListPage extends StatelessWidget {
+class LeadListPage extends StatefulWidget {
   final AppUser user;
   final String mode;
   const LeadListPage({required this.user, required this.mode, super.key});
 
   @override
+  State<LeadListPage> createState() => _LeadListPageState();
+}
+
+class _LeadListPageState extends State<LeadListPage> {
+  static const pageSize = 50;
+  int page = 0;
+  String status = 'সব';
+  String source = 'সব';
+  String interest = 'সব';
+  String district = 'সব';
+  bool newestFirst = true;
+
+  bool get hasFilter =>
+      status != 'সব' || source != 'সব' || interest != 'সব' || district != 'সব';
+
+  List<String> values(List<Lead> leads, String Function(Lead) pick) {
+    final result = leads.map(pick).where((value) => value.isNotEmpty).toSet().toList()
+      ..sort();
+    return ['সব', ...result];
+  }
+
+  Future<void> showFilters(List<Lead> leads) async {
+    var nextStatus = status;
+    var nextSource = source;
+    var nextInterest = interest;
+    var nextDistrict = district;
+    var nextNewest = newestFirst;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          Widget filterDrop(String label, String value, List<String> items,
+                  ValueChanged<String?> change) =>
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: DropdownButtonFormField<String>(
+                  value: items.contains(value) ? value : 'সব',
+                  isExpanded: true,
+                  decoration: InputDecoration(labelText: label),
+                  items: items
+                      .map((item) =>
+                          DropdownMenuItem(value: item, child: Text(item)))
+                      .toList(),
+                  onChanged: change,
+                ),
+              );
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                  18, 18, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.filter_alt),
+                        SizedBox(width: 8),
+                        Text('Lead Filter',
+                            style: TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    filterDrop('Status', nextStatus,
+                        values(leads, (lead) => lead.status),
+                        (value) => setSheetState(() => nextStatus = value!)),
+                    filterDrop('Lead Source', nextSource,
+                        values(leads, (lead) => lead.source),
+                        (value) => setSheetState(() => nextSource = value!)),
+                    filterDrop('আগ্রহের বিষয়', nextInterest,
+                        values(leads, (lead) => lead.interest),
+                        (value) => setSheetState(() => nextInterest = value!)),
+                    filterDrop('জেলা', nextDistrict,
+                        values(leads, (lead) => lead.district),
+                        (value) => setSheetState(() => nextDistrict = value!)),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('নতুন Lead সবার উপরে'),
+                      subtitle: Text(nextNewest ? 'Newest first' : 'Oldest first'),
+                      value: nextNewest,
+                      onChanged: (value) =>
+                          setSheetState(() => nextNewest = value),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              setState(() {
+                                status = source = interest = district = 'সব';
+                                newestFirst = true;
+                                page = 0;
+                              });
+                              Navigator.pop(sheetContext);
+                            },
+                            child: const Text('Reset'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () {
+                              setState(() {
+                                status = nextStatus;
+                                source = nextSource;
+                                interest = nextInterest;
+                                district = nextDistrict;
+                                newestFirst = nextNewest;
+                                page = 0;
+                              });
+                              Navigator.pop(sheetContext);
+                            },
+                            child: const Text('Apply Filter'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) => StreamBuilder<List<Lead>>(
-        stream: leadStream(user),
+        stream: leadStream(widget.user),
         builder: (context, snapshot) {
           if (snapshot.hasError) return Center(child: Text('${snapshot.error}'));
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
           var items = snapshot.data!;
+          final allItems = [...items];
           final now = DateTime.now();
-          if (mode == 'today') {
+          if (widget.mode == 'today') {
             items = items.where((lead) => sameDay(lead.createdAt, now)).toList();
           }
-          if (mode == 'follow') {
+          if (widget.mode == 'follow') {
             items = items.where((lead) => sameDay(lead.followUp, now)).toList();
           }
-          if (items.isEmpty) return const Center(child: Text('কোনো লিড নেই'));
-          return ListView(
-            padding: const EdgeInsets.all(10),
-            children: items
-                .map((lead) => LeadCard(lead: lead, user: user))
-                .toList(),
+          if (status != 'সব') items = items.where((lead) => lead.status == status).toList();
+          if (source != 'সব') items = items.where((lead) => lead.source == source).toList();
+          if (interest != 'সব') {
+            items = items.where((lead) => lead.interest == interest).toList();
+          }
+          if (district != 'সব') {
+            items = items.where((lead) => lead.district == district).toList();
+          }
+          items.sort((a, b) => newestFirst
+              ? b.createdAt.compareTo(a.createdAt)
+              : a.createdAt.compareTo(b.createdAt));
+          final totalPages = items.isEmpty ? 1 : (items.length / pageSize).ceil();
+          if (page >= totalPages) page = totalPages - 1;
+          final start = page * pageSize;
+          final end = (start + pageSize).clamp(0, items.length) as int;
+          final visible = items.sublist(start, end);
+          final title = widget.mode == 'today'
+              ? 'আজকের Lead'
+              : widget.mode == 'follow'
+                  ? 'আজকের Follow-up'
+                  : 'সব Lead';
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 8, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text('$title (${items.length})',
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                    IconButton(
+                      tooltip: 'Filter Leads',
+                      onPressed: () => showFilters(allItems),
+                      icon: Badge(
+                        isLabelVisible: hasFilter,
+                        child: const Icon(Icons.filter_alt_outlined),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: visible.isEmpty
+                    ? const Center(child: Text('কোনো লিড পাওয়া যায়নি'))
+                    : ListView(
+                        padding: const EdgeInsets.all(10),
+                        children: visible
+                            .map((lead) =>
+                                LeadCard(lead: lead, user: widget.user))
+                            .toList(),
+                      ),
+              ),
+              if (items.length > pageSize)
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          tooltip: 'Previous 50',
+                          onPressed: page > 0
+                              ? () => setState(() => page--)
+                              : null,
+                          icon: const Icon(Icons.chevron_left),
+                        ),
+                        Text('Page ${page + 1} / $totalPages  •  ৫০টি করে'),
+                        IconButton(
+                          tooltip: 'Next 50',
+                          onPressed: page + 1 < totalPages
+                              ? () => setState(() => page++)
+                              : null,
+                          icon: const Icon(Icons.chevron_right),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           );
         },
       );
